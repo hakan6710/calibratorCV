@@ -61,7 +61,7 @@ class ImageSubscriber(Node):
     # Convert ROS Image message to OpenCV image
     current_frame = self.br.compressed_imgmsg_to_cv2(data)
     #self.draw_line(current_frame)
-    self.test(current_frame)
+    self.getCorners(current_frame)
     self.calculate_worldpoints()
     if self.calibrated==False:
       self.calibrate_with_worldpoints(current_frame)
@@ -110,7 +110,7 @@ class ImageSubscriber(Node):
     print("t Vecs")
     print(repr(tvecs))
 
-    
+
     rot_mat, _=cv2.Rodrigues(rvecs[0])
     print(rot_mat)
     
