@@ -16,6 +16,8 @@ camera_matrix=np.array([ [989.437842, 0.000000, 980.319408],
 
 dist_coefficients=np.array([-0.299377, 0.069821, -0.000843, -0.001001, 0.000000], dtype=np.float32)
 
+
+
 printed_value=False
 
 class ImageSubscriber(Node):
@@ -40,10 +42,12 @@ class ImageSubscriber(Node):
       
     # Used to convert between ROS and OpenCV images
     self.br = CvBridge()
-    self.objpoints = [] # 3d point in real world space
-    self.imgpoints = [] # 2d points in image plane.
-    self.centerPoint= [0.4191396, 2.035, 1.792]
-    self.worldPOintsCalculated=[]
+    self.objp = [] # 3d point in real world space
+    self.imgp = [] # 2d points in image plane.
+  
+    self.centerPoint= [-0.4191396, 2.035, 1.792]
+    self.worldPOintsCalculated=np.zeros((10*7,3), np.float32)
+    self.calibrated=False
    
 
    
@@ -59,11 +63,11 @@ class ImageSubscriber(Node):
     #self.draw_line(current_frame)
     self.test(current_frame)
     self.calculate_worldpoints()
-    self.calibrate_shit(current_frame)
-    #self.calculate_worldpoints()
+    if self.calibrated==False:
+      self.calibrate_with_worldpoints(current_frame)
 
 
-  def test(self,img):
+  def getCorners(self,img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -73,7 +77,7 @@ class ImageSubscriber(Node):
     if ret == True:
         
         corners2=cv2.cornerSubPix(gray,corners, (11,11), (-1,-1), criteria)
-        self.imgpoints=np.array([[corner for [corner] in corners]])
+        self.imgp.append(corners)
         #print(repr(corners2))
 
         # Draw and display the corners
@@ -81,44 +85,53 @@ class ImageSubscriber(Node):
         im2=cv2.resize(img,(960,604))
         cv2.imshow("test", im2)
         cv2.waitKey(500)
-
-    #print(len(self.imgpoints))
       
     
-  def calibrate_shit(self,img):
+  def calibrate_with_worldpoints(self,img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
-
-    temp_worldPoints=np.array(self.worldPOintsCalculated, dtype=np.float32)
-    temp_imgpoints=np.array(self.imgpoints[0], dtype=np.float32)
+    #temp_imgpoints=np.array(self.imgpoints[0], dtype=np.float32)
     
 
+    self.objp.append(self.worldPOintsCalculated)
+
     
+    print(self.worldPOintsCalculated)
+    print(self.imgp[0])
+    
+    ret, cam_mtx, dist, rvecs, tvecs = cv2.calibrateCamera(self.objp, self.imgp, gray.shape[::-1], camera_matrix, dist_coefficients,rr,tt,
+    flags=cv2.CALIB_USE_INTRINSIC_GUESS)
 
-    print(len(temp_worldPoints))
-    print(len(temp_imgpoints))
-
-    print(temp_worldPoints)
-    print(temp_imgpoints)
-
-    #objp = np.zeros((7*10, 3), np.float)
-    ret, cam_mtx, dist, rvecs, tvecs = cv2.calibrateCamera(temp_worldPoints, temp_imgpoints, gray.shape[::-1], camera_matrix, dist_coefficients)
+    
   
     print("r vecs")
-    print(rvecs[2])
+    print(repr(rvecs))
 
     print("t Vecs")
-    print(tvecs[2])
+    print(repr(tvecs))
+
+    
+    rot_mat, _=cv2.Rodrigues(rvecs[0])
+    print(rot_mat)
+    
+
+    self.calibrated=True
 
   def calculate_worldpoints(self,pattern=[7,10],widthCheckerboard=0.057):
-    self.worldPOintsCalculated=[]
+    index=0
     for i in range(pattern[1]):
       for j in range(pattern[0]):
-        self.worldPOintsCalculated.append([self.centerPoint[0]+i*widthCheckerboard, 
+        # self.worldPOintsCalculated[index]=[self.centerPoint[0]+i*widthCheckerboard, 
+        #                                    self.centerPoint[1],
+        #                                    self.centerPoint[2]-j*widthCheckerboard]
+        self.worldPOintsCalculated[index]=[self.centerPoint[0]+(pattern[1]-i-1)*widthCheckerboard, 
                                            self.centerPoint[1],
-                                           self.centerPoint[2]-j*widthCheckerboard])
-    #print(repr(self.worldPOintsCalculated))
-    #print(len(self.worldPOintsCalculated))
+                                           self.centerPoint[2]-j*widthCheckerboard]
+
+        index=index+1
+    #print(repr(self.worldPO # self.worldPOintsCalculated[index]=[self.centerPoint[0]+i*widthCheckerboard, 
+        #                                    self.centerPoint[1],
+        #                                    self.centerPoint[2]-j*widthCheckerboard]
 
 
   def draw_line(self, img):
