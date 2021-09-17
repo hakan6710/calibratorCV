@@ -12,7 +12,6 @@ from geometry_msgs.msg import TransformStamped
 
 from tf2_ros import TransformBroadcaster
 
-import tf_transformations
 from scipy.spatial.transform import Rotation as R
 
 
@@ -38,13 +37,17 @@ img_points=np.array([
 
 trans_vec=np.array([-0.21408474,
         1.4380101 ,
-        1.008065], dtype=np.float32)
+        1.008065], dtype=np.float)
 
 rot_vec=np.array([[0.7338462, -0.4683586, -0.4920467],
 
                    [-0.4416951, 0.2213383, -0.8694336],
 
                    [0.5161155, 0.8553652, -0.0444434]], dtype=np.float32)
+
+rot_vec_old=np.array([[ 0.998915,   -0.00823395, -0.04583641],
+ [-0.04174363,  0.27802867, -0.9596653 ],
+ [ 0.02064567,  0.9605375,   0.2773833 ]], dtype=np.float32)
 
 
 
@@ -107,7 +110,30 @@ class ImageSubscriber(Node):
     t.transform.rotation.z = q[2]
     t.transform.rotation.w = q[3]
 
+
+    t2 = TransformStamped()
+
+    # Read message content and assign it to
+    #2 corresponding tf variables
+    t2.header.stamp = self.get_clock().now().to_msg()
+    t2.header.frame_id = 'world'
+    t2.child_frame_id = "old_rot"
+
+   
+    t2.transform.translation.x =trans_vec[0]
+    t2.transform.translation.y = trans_vec[1]
+    t2.transform.translation.z = trans_vec[2]-0.5
+   
+    r = R.from_matrix(rot_vec_old)
+  
+    #q = tf_transformations.quaternion_from_euler(0, 0, msg.theta)
+    q=r.as_quat()
+    t2.transform.rotation.x = q[0]
+    t2.transform.rotation.y = q[1]
+    t2.transform.rotation.z = q[2]
+    t2.transform.rotation.w = q[3]
     # Send the transformation
+    self.br.sendTransform(t2)
     self.br.sendTransform(t)
 
    
@@ -121,19 +147,21 @@ class ImageSubscriber(Node):
     # Convert ROS Image message to OpenCV image
     current_frame = self.br.compressed_imgmsg_to_cv2(data)
     print(current_frame.shape)
-
-    self.getCorners(current_frame)
-    #self.drawImgPoints(current_frame)
+    #self.draw_line(current_frame)
+    #self.calculate_worldpoints()
+    #self.getCorners(current_frame)
+    self.drawImgPoints(current_frame)
     
   def drawImgPoints(self,img):
    
-    #img = cv2.circle(img, (img_points[2][0][0],img_points[2][0][1]), radius=5, color=(0, 0, 255), thickness=-1)
-    #img = cv2.circle(img, (img_points[3][0][0],img_points[3][0][1]), radius=5, color=(0, 255, 0), thickness=-1)
-    #img = cv2.circle(img, (img_points[4][0][0],img_points[4][0][1]), radius=5, color=(255, 0, 0), thickness=-1)
-    img = cv2.circle(img, (img_points[5][0][0],img_points[5][0][1]), radius=5, color=(0, 0, 255), thickness=-1)
-    i2=cv2.resize(img,(1440,906))
-    cv2.imshow("test", i2)
-    cv2.waitKey(500)
+    # #img = cv2.circle(img, (img_points[2][0][0],img_points[2][0][1]), radius=5, color=(0, 0, 255), thickness=-1)
+    # #img = cv2.circle(img, (img_points[3][0][0],img_points[3][0][1]), radius=5, color=(0, 255, 0), thickness=-1)
+    # #img = cv2.circle(img, (img_points[4][0][0],img_points[4][0][1]), radius=5, color=(255, 0, 0), thickness=-1)
+    # img = cv2.circle(img, (img_points[5][0][0],img_points[5][0][1]), radius=5, color=(0, 0, 255), thickness=-1)
+    # i2=cv2.resize(img,(1440,906))
+    # cv2.imshow("test", i2)
+    # cv2.waitKey(500)
+    print("hi")
 
   def getCorners(self,img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -154,8 +182,8 @@ class ImageSubscriber(Node):
         # Draw and display the corners
         cv2.drawChessboardCorners(img, (4,5), corners2, ret)
         print(self.imgp[0])
-        if self.calibrated==False:
-          self.calibrate_with_worldpoints(img)
+        #if self.calibrated==False:
+          #self.calibrate_with_worldpoints(img)
 
     i2=cv2.resize(img,(960,604))
     cv2.imshow("test", i2)
@@ -163,7 +191,14 @@ class ImageSubscriber(Node):
           
     
   def calibrate_with_worldpoints(self,img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
+    #temp_imgpoints=np.array(self.imgpoints[0], dtype=np.float32)
+    
+
+    #self.objp.append(self.worldPOintsCalculated)
+
+
     abc,rvecs, tvecs = cv2.solvePnP(self.objp[0], self.imgp[0],camera_matrix , dist_coefficients)
 
     print("r vecs")
@@ -176,9 +211,22 @@ class ImageSubscriber(Node):
     print(rot_mat)
     self.calibrated=True
 
+  # def calculate_worldpoints(self,pattern=[4,5],widthCheckerboard=0.16):
+  #   index=0
+  #   for i in range(pattern[1]):
+  #     for j in range(pattern[0]):
+        
+  #       # self.worldPOintsCalculated[index]=[self.centerPoint[0]+(pattern[1]-i-1)*widthCheckerboard, 
+  #       #                                    self.centerPoint[1]-j*widthCheckerboard,
+  #       #                                    self.centerPoint[2]]
+  #       self.worldPOintsCalculated[index]=[self.centerPoint[0]-i*widthCheckerboard, 
+  #                                           self.centerPoint[1]-(pattern[0]-j-1)*widthCheckerboard,
+  #                                           self.centerPoint[2]]
 
-
-
+        # index=index+1
+    #print(repr(self.worldPO # self.worldPOintsCalculated[index]=[self.centerPoint[0]+i*widthCheckerboard, 
+        #                                    self.centerPoint[1],
+        #                                    self.centerPoint[2]-j*widthCheckerboard
 
   
 def main(args=None):
