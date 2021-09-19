@@ -1,4 +1,5 @@
 # Import the necessary libraries
+from numpy.core.fromnumeric import shape
 import rclpy # Python library for ROS 2
 from rclpy.node import Node # Handles the creation of nodes
 from sensor_msgs.msg import Image,CompressedImage # Image is the message type
@@ -8,23 +9,31 @@ import cv2 # OpenCV library
 import math
 
 
-from geometry_msgs.msg import TransformStamped
+# camera_matrix=np.array([ [989.437842, 0.000000, 980.319408], 
+#                         [0.000000, 996.522603, 658.606498], 
+#                         [0.000000, 0.000000, 1.000000]], dtype=np.float32)
 
-from tf2_ros import TransformBroadcaster
-
-import tf_transformations
-from scipy.spatial.transform import Rotation as R
+# dist_coefficients=np.array([-0.299377, 0.069821, -0.000843, -0.001001, 0.000000], dtype=np.float32)
 
 
-camera_matrix=np.array([ [989.437842, 0.000000, 980.319408], 
-                        [0.000000, 996.522603, 658.606498], 
+# checkerboard_size=[4,5]
+
+
+
+camera_matrix=np.array([ [976.637135, 0.000000, 952.880210], 
+                        [0.000000, 983.500564, 649.387647], 
                         [0.000000, 0.000000, 1.000000]], dtype=np.float32)
 
-dist_coefficients=np.array([-0.299377, 0.069821, -0.000843, -0.001001, 0.000000], dtype=np.float32)
+dist_coefficients=np.array([-0.270602, 0.051047, -0.000236, 0.000302, 0.000000], dtype=np.float32)
 
-
-checkerboard_size=[4,5]
-
+world_points=np.array([
+    [[0.255, 3.2,0]], #p15
+    [[0.245,2.72,0]],#p45
+    [[-0.014,3.21,0]],#p13
+    [[0,2.73,0]],#p43
+    [[-0.32, 3.225, 0]],#p11
+    [[-0.32,2.75,0]]#p41
+],dtype=np.float32)
 
 
 img_points=np.array([
@@ -36,19 +45,26 @@ img_points=np.array([
 [[ 821.0164,  1188.3483 ]]#p41
 ],dtype=np.float32)
 
-trans_vec=np.array([-0.21408474,
-        1.4380101 ,
-        1.008065], dtype=np.float32)
+rotation_matrix=np.array([[ 0.998915, -0.00823395, -0.04583641],
+[-0.04174363, 0.27802867, -0.9596653 ],
+[ 0.02064567, 0.9605375, 0.2773833 ]],dtype=np.float32)
 
-rot_vec=np.array([[0.7338462, -0.4683586, -0.4920467],
+rotation_vector=np.array([[ 1.2889872 ],
+[-0.04462786],
+[-0.02249426]], dtype=np.float32)
 
-                   [-0.4416951, 0.2213383, -0.8694336],
 
-                   [0.5161155, 0.8553652, -0.0444434]], dtype=np.float32)
-
+translation_vector=np.array([[-0.21408474],
+[ 1.4380101 ],
+[ 1.008065  ]], dtype=np.float32)
 
 
 printed_value=False
+
+width = int(1920 * 0.75 / 100)
+height = int(1208 * 0.75 / 100)
+dim = (width, height)
+
 
 class ImageSubscriber(Node):
   """
@@ -72,45 +88,18 @@ class ImageSubscriber(Node):
       
     # Used to convert between ROS and OpenCV images
     self.br = CvBridge()
-    self.objp = [] # 3d point in real world space
-    self.imgp = [] # 2d points in image plane.
-  
+    self.objp = world_points # 3d point in real world space
+    self.imgp = img_points # 2d points in image plane.
+    self.camera_matrix=camera_matrix
+    self.dist_coeff=dist_coefficients
+    self.rot_mat=rotation_matrix
+    self.translation_vec=translation_vector
+    self.rvec=rotation_vector
     
-    #self.worldPOintsCalculated=np.zeros((checkerboard_size[0]*checkerboard_size[1],3), np.float32)
+
     self.calibrated=False
     self.counter=0
 
-    self.br = TransformBroadcaster(self)
-    while True:
-      self.transform_publisher()
-
-  def transform_publisher(self):
-    t = TransformStamped()
-
-    # Read message content and assign it to
-    # corresponding tf variables
-    t.header.stamp = self.get_clock().now().to_msg()
-    t.header.frame_id = 'world'
-    t.child_frame_id = "test"
-
-   
-    t.transform.translation.x =trans_vec[0]
-    t.transform.translation.y = trans_vec[1]
-    t.transform.translation.z = trans_vec[2]
-   
-    r = R.from_matrix(rot_vec)
-  
-    #q = tf_transformations.quaternion_from_euler(0, 0, msg.theta)
-    q=r.as_quat()
-    t.transform.rotation.x = q[0]
-    t.transform.rotation.y = q[1]
-    t.transform.rotation.z = q[2]
-    t.transform.rotation.w = q[3]
-
-    # Send the transformation
-    self.br.sendTransform(t)
-
-   
   def listener_callback(self, data):
     """
     Callback function.
@@ -121,23 +110,69 @@ class ImageSubscriber(Node):
     # Convert ROS Image message to OpenCV image
     current_frame = self.br.compressed_imgmsg_to_cv2(data)
     print(current_frame.shape)
-
+    #self.calculate_xyz(957.1643,  1161.1813)
+    #self.reproject_points(current_frame)
     self.getCorners(current_frame)
     #self.drawImgPoints(current_frame)
+
+
+  def drawImgPoints(self,img,imgpts):
+    font                   = cv2.FONT_HERSHEY_SIMPLEX
+    bottomLeftCornerOfText = (10,500)
+    fontScale              = 0.5
+    fontColor              = (255,255,255)
+    lineType               = 2
+
     
-  def drawImgPoints(self,img):
-   
-    #img = cv2.circle(img, (img_points[2][0][0],img_points[2][0][1]), radius=5, color=(0, 0, 255), thickness=-1)
-    #img = cv2.circle(img, (img_points[3][0][0],img_points[3][0][1]), radius=5, color=(0, 255, 0), thickness=-1)
-    #img = cv2.circle(img, (img_points[4][0][0],img_points[4][0][1]), radius=5, color=(255, 0, 0), thickness=-1)
-    img = cv2.circle(img, (img_points[5][0][0],img_points[5][0][1]), radius=5, color=(0, 0, 255), thickness=-1)
-    i2=cv2.resize(img,(1440,906))
+    print(repr(imgpts))
+    for point in imgpts:
+      #img = cv2.circle(img, (point[0][0],point[0][1]), radius=5, color=(0, 0, 255), thickness=-1)
+      img=cv2.putText(img,f"X={0},Y={0}", 
+        (point[0][0],point[0][1]), 
+        font, 
+        fontScale,
+        fontColor,
+        lineType)
+    i2=cv2.resize(img,dim)
     cv2.imshow("test", i2)
     cv2.waitKey(500)
+  
+  def calculate_xyz(self,img,imgpts):
+    print("calculating xyz")
+    undistortedAndNormalizedPointMatrix = cv2.undistortPoints(imgpts, self.camera_matrix,  dist_coefficients,P=self.camera_matrix)
+    projected_points = []
+
+    #print(grid_shape_x)
+    #print(list(get_divisors(image_width_px)))
+    #print(grid_shape_y)
+    #print(list(get_divisors(image_height_px)))
+
+    print(undistortedAndNormalizedPointMatrix)
+    #print(undistortedAndNormalizedPointMatrix.shape)
+    for norm in undistortedAndNormalizedPointMatrix:
+        #print(norm.shape)
+        norm_expanded = np.array([[norm[0][0], norm[0][1], 1]])
+        #print(norm_expanded.shape)
+        rotated_ray = norm_expanded * np.linalg.inv(self.rot_mat) * np.linalg.inv(self.camera_matrix)
+        #print(rotated_ray.shape)
+        rotated_normalised_ray = rotated_ray / rotated_ray[0][2]
+        #print(rotated_normalised_ray.shape)
+        xGround = (-1) * self.translation_vec[2] * rotated_normalised_ray[0][0] + (-1) * self.translation_vec[0]
+        yGround = self.translation_vec[2] * rotated_normalised_ray[0][1] +self.translation_vec[1]
+        print(f"xGround={xGround}")
+        print(f"yGround={yGround}")
+
+        projected_points.append((xGround,yGround,0.0))
+  
+  
+
 
   def getCorners(self,img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
+    img=cv2.undistort(img,camera_matrix,dist_coefficients)
+    print(shape(img))
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     # Find the chess board corners
     ret, corners = cv2.findChessboardCorners(gray, (4,5), None)
@@ -156,9 +191,9 @@ class ImageSubscriber(Node):
         print(self.imgp[0])
         if self.calibrated==False:
           self.calibrate_with_worldpoints(img)
-
-    i2=cv2.resize(img,(960,604))
-    cv2.imshow("test", i2)
+    cv2.imwrite("output"+"distorted"+".jpg",img)
+    i2=cv2.resize(img,dim)
+    cv2.imshow("t11", i2)
     cv2.waitKey(500)
           
     
@@ -175,6 +210,16 @@ class ImageSubscriber(Node):
     rot_mat, test=cv2.Rodrigues(rvecs)
     print(rot_mat)
     self.calibrated=True
+
+  def reproject_points(self,img):
+    print("Reprojecting and Drawing")
+    # print(self.rot_mat)
+    # print(self.translation_vec)
+    # print(self.objp[0])
+    imgpts, jac = cv2.projectPoints(self.objp, self.rvec, self.translation_vec, self.camera_matrix, self.dist_coeff)
+    self.calculate_xyz(img,imgpts)
+    #self.drawImgPoints(img,imgpts=imgpts)
+
 
 
 
