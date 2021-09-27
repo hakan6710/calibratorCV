@@ -135,15 +135,31 @@ def calculate_xyz(rot_mat,tvec,cam_mat, img_points,world_points):
         p_y=point_3D[1]
         print(f"x={p_x},x_offset={p_x-world_points[idx][0][0]},y={p_y}, y_offset={p_y-world_points[idx][0][1]}")
 
-def reproject_points(w_points,rvec,tvec,cam_mx, dist_coef):
+def reproject_points(w_points,img_points,rvec,tvec,cam_mx, dist_coef):
     
     print("Undistored Points")
     print(Img_points_undistored)
     print("Reprojecting and Drawing")
-    imgpts, jac = cv2.projectPoints(w_points, rvec, tvec, cam_mx, dist_coef)
+    projected_imgpts, jac = cv2.projectPoints(w_points, rvec, tvec, cam_mx, dist_coef)
 
-    
-    print(imgpts)
+    print("Projected Points")
+    print(projected_imgpts)
+
+    error_x=0
+    error_y=0
+
+    for idx,p_img in enumerate(projected_imgpts):
+        print(p_img)
+        print(img_points[idx])
+
+        x_diff=(img_points[idx][0][0]-p_img[0][0])**2
+        y_diff=(img_points[idx][0][1]-p_img[0][1])**2
+        print(x_diff)
+        print(y_diff)
+
+    print(error_x)
+    print(error_y)
+
     # print("Undistored")
     # print(imgpts_undistorted)
 
@@ -151,15 +167,15 @@ def reproject_points(w_points,rvec,tvec,cam_mx, dist_coef):
 
 
 
-def new_shit(input_imgPoints,camera_mat, tvec, rot_mat,worldpoints):
- 
-
+def calculate_projection(input_imgPoints,camera_mat, tvec, rot_mat,worldpoints):
+    
+  
     Extrincic=cv2.hconcat([rot_mat,tvec])
     Projection_mtx=camera_mat.dot(Extrincic)
-
+    print(Projection_mtx)
     #delete the third column since Z=0 
     Projection_mtx = np.delete(Projection_mtx, 2, 1)
-
+    print(repr(Projection_mtx))
     #finding the inverse of the matrix 
     Inv_Projection = np.linalg.inv(Projection_mtx)
 
@@ -175,85 +191,26 @@ def new_shit(input_imgPoints,camera_mat, tvec, rot_mat,worldpoints):
 
         #calculating the 3D point which located on the 3D plane
         projected_Point=Inv_Projection.dot(img_point)
-        #print(projected_Point)
+        
         p_x=projected_Point[0]/projected_Point[2]
         p_y=projected_Point[1]/projected_Point[2]
         print(f"x={p_x},x_offset={p_x-worldpoints[idx][0][0]},y={p_y}, y_offset={p_y-worldpoints[idx][0][1]}")
         #projection_result.append([projected_Point[0]/projected_Point[2],projected_Point[1]/projected_Point[2]])
 
-# def old_2dto3d(imgpoints,rot_mat,tvec,worldpoints):
-#     undistortedAndNormalizedPointMatrix = cv2.undistortPoints(imgpoints, cameraMatrix=Camera_matrix, distCoeffs= Dist_coefficients)
-#     projected_points = []
-#     Extrinsic=cv2.hconcat([rot_mat,tvec])
-#     Extrinsic_inv = np.delete(np.linalg.pinv(Extrinsic), 2, 1)
-#         Rotation_vector = R.from_matrix(rot_mat)
 
-#     Rotation_inv = np.linalg.inv(rot_mat)
-
-
-#     #print(undistortedAndNormalizedPointMatrix)
-#     print("Results old_shit")
-#     #print(undistortedAndNormalizedPointMatrix.shape)
-#     for idx, norm in enumerate(undistortedAndNormalizedPointMatrix):
-#         #print(norm.shape)
-#         #print(norm)
-#         norm_expanded = np.array([[norm[0][0], norm[0][1], 1]])
-#         #print(norm_expanded.shape)
-#         rotated_ray = Rotation_inv.dot(norm_expanded.T)
-#         #rotated_ray = norm_expanded * np.linalg.inv(Rotation_matrix) #* np.linalg.inv(Camera_matrix)
-#         #print(rotated_ray.shape)
-
-#         rotated_normalised_ray = rotated_ray #/ rotated_ray[0][2]
-#         #print(rotated_ray)
-#         #print(rotated_normalised_ray.shape)
-
-#         xGround = rotated_normalised_ray[0]/rotated_normalised_ray[2] + Translation_vector[0]
-#         yGround = rotated_normalised_ray[1]/rotated_normalised_ray[2] + Translation_vector[1]
-#         #print(xGround.shape)
-#         #print(f"xGround={xGround},yGround={yGround}")
-#         print(f"x={xGround},x_offset={xGround-worldpoints[idx][0][0]},y={yGround}, y_offset={yGround-worldpoints[idx][0][1]}")
-#         #projected_points.append((xGround,yGround,0.0))
- 
 
 
 def main(args=None):
     #print("Testing Method One")
-    #print(Img_points_undistored)
+    print(Img_points_undistored)
     new_rvec,new_tvec=getRevAndTvec(World_points,Img_points_undistored,Camera_matrix,Dist_coefficients)
     new_rot_mat=calculate_rot(new_rvec)
-    #print(Img_points_undistored)
-    #new_shit(Img_points_undistored,Camera_matrix,new_tvec,new_rot_mat,World_points)
-    calculate_xyz(new_rot_mat,new_tvec,Camera_matrix,Img_points_undistored,World_points)
-    # print("Testing with distorted points")
-    # new_rvec,new_tvec=getRevAndTvec(World_points_offseted,Img_points,Camera_matrix,Dist_coefficients)
-    # new_rot_mat=calculate_rot(new_rvec)
-    # new_shit(Img_points,Camera_matrix,new_tvec,new_rot_mat,World_points_offseted)
+
+    #reproject_points(World_points,Img_points,new_rvec,new_tvec,Camera_matrix,Dist_coefficients)
+
+    calculate_projection(Img_points_undistored,Camera_matrix,new_tvec,new_rot_mat,World_points)
+
     
-    
-
-    # print("Other Method")
-    # new_rvec,new_tvec=getRevAndTvec(World_points_offseted,Img_points_undistored,Camera_matrix,Dist_coefficients)
-    # new_rot_mat=calculate_rot(new_rvec)
-    # calculate_xyz(new_rot_mat,new_tvec,Camera_matrix,Img_points_undistored,World_points_offseted)
-
-    # print("Ohne Rvec UNdistorted")
-    # new_shit(Img_points_undistored,Camera_matrix,Translation_vector,Rotation_matrix,World_points)
-    
-    #print("distorted Projection")
-    #new_shit(Img_points,Camera_matrix,Translation_vector,Rotation_matrix)
-    #print(test)
-    # print("First Method")
-    # for idx,point in enumerate(img_points):
-    #     #print(point)
-    #     calculate_xyz(idx,u=point[0][0],v=point[0][1])
-
-    # print("Second Method")
-    # new_shit()
-    # print("Reprojecting")
-    # reproject_points(w_points=world_points,tvec=translation_vector,rvec=rotation_vector)
-
-    print("Nikolovski")
-    #old_2dto3d(Img_points,Rotation_matrix,Translation_vector,World_points)
 
 if __name__ == '__main__':
   main()
